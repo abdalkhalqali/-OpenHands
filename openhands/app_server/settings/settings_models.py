@@ -21,6 +21,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    PrivateAttr,
     SecretStr,
     SerializationInfo,
     ValidationError,
@@ -375,6 +376,24 @@ class Settings(BaseModel):
             'See ``LLMProfiles`` for the profile-management API.'
         ),
     )
+    # Active Agent Profile provenance (cloud SaaS), surfaced by
+    # ``SaasSettingsStore.load`` only when the caller requested profile
+    # resolution (``resolve_agent_profile=True`` / an explicit override).
+    # ``active_agent_profile_id`` mirrors the SDK persisted-settings pointer;
+    # the revision rides alongside so conversation-start can stamp
+    # ``LaunchedAgentProfile``. Neither is a persisted setting — they default to
+    # None and ``store()`` refuses instances that carry them (no backing column).
+    active_agent_profile_id: str | None = None
+    active_agent_profile_revision: int | None = None
+
+    # True when this instance came from a resolve-requested load: its
+    # agent_settings are the *effective* launch view (possibly an Agent
+    # Profile's resolved dump), not user-authored persisted settings, so it
+    # must never be passed back to ``store()``. Survives ``model_copy`` but
+    # not dump/reconstruct — ``store()`` also guards on
+    # ``active_agent_profile_id`` for reconstructed copies.
+    _resolved_view: bool = PrivateAttr(default=False)
+
     # Marketplace registrations for plugin resolution
     # Users can register multiple marketplaces with different auto-load behaviors
     registered_marketplaces: list[MarketplaceRegistration] = Field(
