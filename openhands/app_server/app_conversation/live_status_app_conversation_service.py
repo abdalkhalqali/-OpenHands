@@ -80,6 +80,12 @@ from openhands.app_server.event_callback.set_title_callback_processor import (
 )
 from openhands.app_server.integrations.provider import PROVIDER_TOKEN_TYPE, ProviderType
 from openhands.app_server.integrations.service_types import SuggestedTask
+from openhands.app_server.mcp.mcp_config_adapter import (
+    dump_mcp_config_for_log,
+    make_remote_mcp_server,
+    mcp_config_server_map,
+    settings_mcp_config_value,
+)
 from openhands.app_server.pending_messages.pending_message_service import (
     PendingMessageService,
 )
@@ -503,7 +509,7 @@ class LiveStatusAppConversationService(AppConversationServiceBase):
             # from settings (e.g. grouping) that may change before delete.
             tags[ARCHIVE_WORKSPACE_PATH_TAG_KEY] = working_dir
             if request_agent.agent_kind == 'acp':
-                llm_model = request_agent.acp_model
+                llm_model = cast(Any, request_agent).acp_model
                 agent_kind = 'acp'
                 # Persist the active ACP provider key so the conversation UI
                 # can resolve a brand label ("Claude Code", "Codex", …) via
@@ -1276,15 +1282,14 @@ class LiveStatusAppConversationService(AppConversationServiceBase):
 
         # Add default OpenHands MCP server (includes Tavily proxy if configured)
         mcp_url = f'{self.web_url}/mcp/mcp'
-        mcp_servers['default'] = {
-            'url': mcp_url,
-            'headers': {'X-OpenHands-ServerConversation-ID': str(conversation_id)},
-        }
+        headers = {'X-OpenHands-ServerConversation-ID': str(conversation_id)}
 
         # Add API key if available
         mcp_api_key = await self.user_context.get_mcp_api_key()
         if mcp_api_key:
-            mcp_servers['default']['headers']['X-Session-API-Key'] = mcp_api_key
+            headers['X-Session-API-Key'] = mcp_api_key
+
+        mcp_servers['default'] = make_remote_mcp_server(mcp_url, headers)
 
     def _merge_custom_mcp_config(
         self, mcp_servers: dict[str, Any], user: UserInfo
@@ -1298,20 +1303,18 @@ class LiveStatusAppConversationService(AppConversationServiceBase):
         if isinstance(user.agent_settings, ACPAgentSettings):
             return
 
-        sdk_mcp = user.agent_settings.mcp_config
-        if not sdk_mcp:
+        custom_mcp_servers = mcp_config_server_map(user.agent_settings.mcp_config)
+        if not custom_mcp_servers:
             return
 
         try:
-            count = len(sdk_mcp)
+            count = len(custom_mcp_servers)
             _logger.info(
                 f'Loading custom MCP config from user settings: {count} servers'
             )
 
-            for name, server in sdk_mcp.items():
-                mcp_servers[name] = server.model_dump(
-                    exclude_none=True, context={'expose_secrets': 'plaintext'}
-                )
+            for name, server in custom_mcp_servers.items():
+                mcp_servers[name] = server
 
             _logger.info(
                 f'Successfully merged custom MCP config: added {count} servers'
@@ -1329,7 +1332,7 @@ class LiveStatusAppConversationService(AppConversationServiceBase):
 
     async def _configure_llm_and_mcp(
         self, user: UserInfo, llm_model: str | None, conversation_id: UUID
-    ) -> tuple[LLM, dict]:
+    ) -> tuple[LLM, dict[str, Any]]:
         """Configure LLM and MCP (Model Context Protocol) settings.
 
         Args:
@@ -1343,7 +1346,6 @@ class LiveStatusAppConversationService(AppConversationServiceBase):
         # Configure LLM
         llm = self._configure_llm(user, llm_model)
 
-        # Configure MCP - SDK expects format: {'mcpServers': {'server_name': {...}}}
         mcp_servers: dict[str, Any] = {}
 
         # Add system-generated servers (default MCP server with Tavily proxy)
@@ -1352,17 +1354,16 @@ class LiveStatusAppConversationService(AppConversationServiceBase):
         # Merge custom servers from user settings
         self._merge_custom_mcp_config(mcp_servers, user)
 
-        # Wrap in the mcpServers structure required by the SDK
-        mcp_config = {'mcpServers': mcp_servers} if mcp_servers else {}
-        _logger.info(f'Final MCP configuration: {sanitize_config(mcp_config)}')
+        _logger.info(
+            f'Final MCP configuration: {sanitize_config(dump_mcp_config_for_log(mcp_servers))}'
+        )
 
-        return llm, mcp_config
+        return llm, mcp_servers
 
     @staticmethod
     def _apply_server_agent_overrides(
         agent: Agent,
         agent_type: AgentType,
-        mcp_config: dict,
         conversation_id: UUID,
         user_id: str | None,
     ) -> Agent:
@@ -1737,7 +1738,7 @@ class LiveStatusAppConversationService(AppConversationServiceBase):
             update={
                 'llm': llm,
                 'tools': tools,
-                'mcp_config': mcp_config if mcp_config else {},
+                'mcp_config': settings_mcp_config_value(mcp_config),
                 'agent_context': AgentContext(
                     system_message_suffix=effective_suffix,
                     secrets=secrets,
@@ -1770,7 +1771,7 @@ class LiveStatusAppConversationService(AppConversationServiceBase):
             )
 
         agent = self._apply_server_agent_overrides(
-            agent, agent_type, mcp_config, conversation_id, user.id
+            agent, agent_type, conversation_id, user.id
         )
 
         # --- hooks (require remote workspace; must precede request build) -----
@@ -1899,11 +1900,12 @@ class LiveStatusAppConversationService(AppConversationServiceBase):
     ) -> StartConversationRequest:
         """Load workspace skills onto a conversation request's agent.
 
-        Used by both the LLM and ACP arms of
-        ``_build_start_conversation_request_for_user`` so that skill-loading
-        semantics only need to change in one place.
+        Used for regular SDK agents. ACP agents do not accept SDK skill updates
+        through the regular Agent context path.
         """
         try:
+            if not isinstance(request.agent, Agent):
+                return request
             updated_agent = await self._load_skills_and_update_agent(
                 sandbox,
                 request.agent,
