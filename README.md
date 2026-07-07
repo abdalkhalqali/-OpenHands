@@ -1,184 +1,150 @@
 <a name="readme-top"></a>
-
 <div align="center">
-  <img src="https://raw.githubusercontent.com/All-Hands-AI/docs/main/openhands/static/img/logo.png" alt="Logo" width="200">
-  <h1 align="center">OpenHands: Code Less, Make More</h1>
+  <img src="https://assets.openhands.dev/logo-whitebackground.png" alt="OpenHands logo" width="340">
+  <p align="center">
+    <strong>The self-hosted developer control center for coding agents and automations.</strong>
+  </p>
+  <p align="center">
+    Run OpenHands, Claude Code, Codex, Gemini, or any ACP-compatible agent across local, remote, and cloud backends.
+  </p>
 </div>
-
-
 <div align="center">
-  <a href="https://github.com/All-Hands-AI/OpenHands/graphs/contributors"><img src="https://img.shields.io/github/contributors/All-Hands-AI/OpenHands?style=for-the-badge&color=blue" alt="Contributors"></a>
-  <a href="https://github.com/All-Hands-AI/OpenHands/stargazers"><img src="https://img.shields.io/github/stars/All-Hands-AI/OpenHands?style=for-the-badge&color=blue" alt="Stargazers"></a>
-  <a href="https://github.com/All-Hands-AI/OpenHands/blob/main/LICENSE"><img src="https://img.shields.io/github/license/All-Hands-AI/OpenHands?style=for-the-badge&color=blue" alt="MIT License"></a>
-  <br/>
-  <a href="https://all-hands.dev/joinslack"><img src="https://img.shields.io/badge/Slack-Join%20Us-red?logo=slack&logoColor=white&style=for-the-badge" alt="Join our Slack community"></a>
-  <a href="https://github.com/All-Hands-AI/OpenHands/blob/main/CREDITS.md"><img src="https://img.shields.io/badge/Project-Credits-blue?style=for-the-badge&color=FFE165&logo=github&logoColor=white" alt="Credits"></a>
-  <br/>
-  <a href="https://docs.all-hands.dev/usage/getting-started"><img src="https://img.shields.io/badge/Documentation-000?logo=googledocs&logoColor=FFE165&style=for-the-badge" alt="Check out the documentation"></a>
-  <a href="https://arxiv.org/abs/2407.16741"><img src="https://img.shields.io/badge/Paper%20on%20Arxiv-000?logoColor=FFE165&logo=arxiv&style=for-the-badge" alt="Paper on Arxiv"></a>
-  <a href="https://docs.google.com/spreadsheets/d/1wOUdFCMyY6Nt0AIqF705KN4JKOWgeI4wUGUP60krXXs/edit?gid=0#gid=0"><img src="https://img.shields.io/badge/Benchmark%20score-000?logoColor=FFE165&logo=huggingface&style=for-the-badge" alt="Evaluation Benchmark Score"></a>
-
-  <!-- Keep these links. Translations will automatically update with the README. -->
-  <a href="https://www.readme-i18n.com/All-Hands-AI/OpenHands?lang=de">Deutsch</a> |
-  <a href="https://www.readme-i18n.com/All-Hands-AI/OpenHands?lang=es">Español</a> |
-  <a href="https://www.readme-i18n.com/All-Hands-AI/OpenHands?lang=fr">français</a> |
-  <a href="https://www.readme-i18n.com/All-Hands-AI/OpenHands?lang=ja">日本語</a> |
-  <a href="https://www.readme-i18n.com/All-Hands-AI/OpenHands?lang=ko">한국어</a> |
-  <a href="https://www.readme-i18n.com/All-Hands-AI/OpenHands?lang=pt">Português</a> |
-  <a href="https://www.readme-i18n.com/All-Hands-AI/OpenHands?lang=ru">Русский</a> |
-  <a href="https://www.readme-i18n.com/All-Hands-AI/OpenHands?lang=zh">中文</a>
-
-  <hr>
+  <a href="https://github.com/OpenHands/incubator-program"><img src="https://img.shields.io/badge/status-beta-blue?style=for-the-badge" alt="Project status beta"></a>
+  <a href="https://github.com/OpenHands/agent-canvas/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/OpenHands/agent-canvas/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
+  <a href="https://www.npmjs.com/package/@openhands/agent-canvas"><img src="https://img.shields.io/npm/v/%40openhands%2Fagent-canvas?style=for-the-badge&logo=npm" alt="npm version"></a>
+  <a href="https://docs.openhands.dev/openhands/usage/agent-canvas/backends"><img src="https://img.shields.io/badge/Documentation-000?logo=googledocs&logoColor=FFE165&style=for-the-badge" alt="Documentation"></a>
+  <a href="https://go.openhands.dev/slack"><img src="https://img.shields.io/badge/Slack-Join%20the%20community-611f69?logo=slack&logoColor=white&style=for-the-badge" alt="Join us on Slack"></a>
 </div>
-
-Welcome to OpenHands (formerly OpenDevin), a platform for software development agents powered by AI.
-
-OpenHands agents can do anything a human developer can: modify code, run commands, browse the web,
-call APIs, and yes—even copy code snippets from StackOverflow.
-
-Learn more at [docs.all-hands.dev](https://docs.all-hands.dev), or [sign up for OpenHands Cloud](https://app.all-hands.dev) to get started.
-
-
-> [!IMPORTANT]
-> **Upcoming change**: We are renaming our GitHub Org from `All-Hands-AI` to `OpenHands` on October 20th, 2025.
-> Check the [tracking issue](https://github.com/All-Hands-AI/OpenHands/issues/11376) for more information.
-
-
-> [!IMPORTANT]
-> Using OpenHands for work? We'd love to chat! Fill out
-> [this short form](https://docs.google.com/forms/d/e/1FAIpQLSet3VbGaz8z32gW9Wm-Grl4jpt5WgMXPgJ4EDPVmCETCBpJtQ/viewform)
-> to join our Design Partner program, where you'll get early access to commercial features and the opportunity to provide input on our product roadmap.
-
-## ☁️ OpenHands Cloud
-The easiest way to get started with OpenHands is on [OpenHands Cloud](https://app.all-hands.dev),
-which comes with $20 in free credits for new users.
-
-## 💻 Running OpenHands Locally
-
-### Option 1: CLI Launcher (Recommended)
-
-The easiest way to run OpenHands locally is using the CLI launcher with [uv](https://docs.astral.sh/uv/). This provides better isolation from your current project's virtual environment and is required for OpenHands' default MCP servers.
-
-**Install uv** (if you haven't already):
-
-See the [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/) for the latest installation instructions for your platform.
-
-**Launch OpenHands**:
-```bash
-# Launch the GUI server
-uvx --python 3.12 --from openhands-ai openhands serve
-
-# Or launch the CLI
-uvx --python 3.12 --from openhands-ai openhands
-```
-
-You'll find OpenHands running at [http://localhost:3000](http://localhost:3000) (for GUI mode)!
-
-### Option 2: Docker
-
-<details>
-<summary>Click to expand Docker command</summary>
-
-You can also run OpenHands directly with Docker:
-
-```bash
-docker pull docker.all-hands.dev/all-hands-ai/runtime:0.59-nikolaik
-
-docker run -it --rm --pull=always \
-    -e SANDBOX_RUNTIME_CONTAINER_IMAGE=docker.all-hands.dev/all-hands-ai/runtime:0.59-nikolaik \
-    -e LOG_ALL_EVENTS=true \
-    -v /var/run/docker.sock:/var/run/docker.sock \
-    -v ~/.openhands:/.openhands \
-    -p 3000:3000 \
-    --add-host host.docker.internal:host-gateway \
-    --name openhands-app \
-    docker.all-hands.dev/all-hands-ai/openhands:0.59
-```
-
-</details>
-
-> **Note**: If you used OpenHands before version 0.44, you may want to run `mv ~/.openhands-state ~/.openhands` to migrate your conversation history to the new location.
-
-> [!WARNING]
-> On a public network? See our [Hardened Docker Installation Guide](https://docs.all-hands.dev/usage/runtimes/docker#hardened-docker-installation)
-> to secure your deployment by restricting network binding and implementing additional security measures.
-
-### Getting Started
-
-When you open the application, you'll be asked to choose an LLM provider and add an API key.
-[Anthropic's Claude Sonnet 4.5](https://www.anthropic.com/api) (`anthropic/claude-sonnet-4-5-20250929`)
-works best, but you have [many options](https://docs.all-hands.dev/usage/llms).
-
-See the [Running OpenHands](https://docs.all-hands.dev/usage/installation) guide for
-system requirements and more information.
-
-## 💡 Other ways to run OpenHands
-
-> [!WARNING]
-> OpenHands is meant to be run by a single user on their local workstation.
-> It is not appropriate for multi-tenant deployments where multiple users share the same instance. There is no built-in authentication, isolation, or scalability.
->
-> If you're interested in running OpenHands in a multi-tenant environment, check out the source-available, commercially-licensed
-> [OpenHands Cloud Helm Chart](https://github.com/all-Hands-AI/OpenHands-cloud)
-
-You can [connect OpenHands to your local filesystem](https://docs.all-hands.dev/usage/runtimes/docker#connecting-to-your-filesystem),
-interact with it via a [friendly CLI](https://docs.all-hands.dev/usage/how-to/cli-mode),
-run OpenHands in a scriptable [headless mode](https://docs.all-hands.dev/usage/how-to/headless-mode),
-or run it on tagged issues with [a github action](https://docs.all-hands.dev/usage/how-to/github-action).
-
-Visit [Running OpenHands](https://docs.all-hands.dev/usage/installation) for more information and setup instructions.
-
-If you want to modify the OpenHands source code, check out [Development.md](https://github.com/All-Hands-AI/OpenHands/blob/main/Development.md).
-
-Having issues? The [Troubleshooting Guide](https://docs.all-hands.dev/usage/troubleshooting) can help.
-
-## 📖 Documentation
-
-To learn more about the project, and for tips on using OpenHands,
-check out our [documentation](https://docs.all-hands.dev/usage/getting-started).
-
-There you'll find resources on how to use different LLM providers,
-troubleshooting resources, and advanced configuration options.
-
-## 🤝 How to Join the Community
-
-OpenHands is a community-driven project, and we welcome contributions from everyone. We do most of our communication
-through Slack, so this is the best place to start, but we also are happy to have you contact us on Github:
-
-- [Join our Slack workspace](https://all-hands.dev/joinslack) - Here we talk about research, architecture, and future development.
-- [Read or post Github Issues](https://github.com/All-Hands-AI/OpenHands/issues) - Check out the issues we're working on, or add your own ideas.
-
-See more about the community in [COMMUNITY.md](./COMMUNITY.md) or find details on contributing in [CONTRIBUTING.md](./CONTRIBUTING.md).
-
-## 📈 Progress
-
-See the monthly OpenHands roadmap [here](https://github.com/orgs/All-Hands-AI/projects/1) (updated at the maintainer's meeting at the end of each month).
-
+<div align="center">
+  <a href="#quickstart">Quickstart</a> |
+  <a href="https://docs.openhands.dev/overview/introduction">Docs</a> |
+  <a href="https://docs.openhands.dev/openhands/usage/agent-canvas/backend-setup/vm">Self-Hosting</a> |
+  <a href="https://docs.openhands.dev/openhands/usage/agent-canvas/acp-agents">ACP Agents</a> |
+  <a href="https://docs.openhands.dev/openhands/usage/agent-canvas/prebuilt-automations">Automations</a> |
+  <a href="https://go.openhands.dev/slack">Slack</a>
+</div>
 <p align="center">
-  <a href="https://star-history.com/#All-Hands-AI/OpenHands&Date">
-    <img src="https://api.star-history.com/svg?repos=All-Hands-AI/OpenHands&type=Date" width="500" alt="Star History Chart">
-  </a>
+  <img src="https://assets.openhands.dev/screenshot/automation-preview.png" alt="Agent Canvas automation preview" width="100%">
 </p>
+<hr>
 
-## 📜 License
+OpenHands Agent Canvas turns your coding agents into a self-hosted, always-on engineering team. It's a developer control center for starting conversations and automating everyday tasks — like generating reports that publish to Slack or automatically decomposing GitHub issues into tasks.
 
-Distributed under the MIT License, with the exception of the `enterprise/` folder. See [`LICENSE`](./LICENSE) for more information.
+It runs locally on your machine by default, but can connect to multiple “agent backends”, e.g. running agents in Docker containers, on VMs, or within your company infrastructure. You can optionally choose to run agents on OpenHands Cloud or OpenHands Enterprise infrastructure.
 
-## 🙏 Acknowledgements
+Agent Canvas runs the open source OpenHands agent out-of-the-box, but can use any third-party agent like Claude Code and Codex.
 
-OpenHands is built by a large number of contributors, and every contribution is greatly appreciated! We also build upon other open source projects, and we are deeply thankful for their work.
+|    |    |
+|---|---|
+| [**Self-host your way**](https://docs.openhands.dev/openhands/usage/agent-canvas/backend-setup/vm) | Run agents locally, in Docker, on VMs, or anywhere you can run an agent server backend |
+| [**Switch between different backends**](https://docs.openhands.dev/openhands/usage/agent-canvas/backends) | Switch between local, remote, and cloud agents without losing focus |
+| [**Create automations**](https://docs.openhands.dev/openhands/usage/agent-canvas/prebuilt-automations) | Create automations and workflows that integrate with Slack, GitHub, Linear, and more. Run on a schedule or in response to webhook events  |
+| [**Integrate with the tools you use**](https://docs.openhands.dev/openhands/usage/agent-canvas/prebuilt-automations) | Connect your automations with third-party services like Slack, GitHub, Notion, and more to automate workflows |
+| [**Bring your own model**](https://docs.openhands.dev/openhands/usage/settings/llm-settings#llm-profiles) | Use with any LLM |
+| [**Use with any agent**](https://docs.openhands.dev/openhands/usage/agent-canvas/acp-agents) | Use with OpenHands, Claude Code, Codex, Gemini, or any agent with Agent-Client Protocol (ACP). |
 
-For a list of open source projects and licenses used in OpenHands, please see our [CREDITS.md](./CREDITS.md) file.
 
-## 📚 Cite
+If you have questions or feedback, please open a GitHub issue or join the [#proj-agent-canvas channel in Slack](https://openhands.dev/joinslack).
 
+> [!NOTE]
+> The code in this repo is moving! See [Agent Canvas transition FAQ](https://github.com/OpenHands/OpenHands/issues/14841)
+>
+> The source code for OpenHands Agent and Agent Server lives in [OpenHands/software-agent-sdk](https://github.com/OpenHands/software-agent-sdk).
+>
+> The source code for Agent Canvas lives in [OpenHands/agent-canvas](https://github.com/OpenHands/agent-canvas).
+
+## Quickstart
+
+You can install OpenHands to run agents on any machine: on your laptop, on a dedicated computer like a Mac Mini,
+or on a server in the cloud.
+
+The most powerful way to run OpenHands is on a server in the cloud. This allows your agents to continue running
+even when your laptop is shut, and makes it easier to trigger your agents through third-party services
+like Slack, GitHub, and Datadog. See [SELF_HOSTING.md](docs/SELF_HOSTING.md) for details, especially with respect to security hardening.
+
+Notably, you can run the backend in _multiple different environments_, and switch between
+them from the same Agent Canvas frontend. E.g. you can share an Agent Server with your team for agents doing
+code review and dependency updates, then have your personal agents running on your laptop.
+
+### Option 1: Without a Sandbox
+
+> [!WARNING]
+> This runs the agent-server directly on the machine you're installing on — the agent will have full access to your filesystem!
+
+**Prerequisites**: Node.js 22.12.x or later, `uv`
+
+```sh
+npm install -g @openhands/agent-canvas
+agent-canvas
 ```
-@inproceedings{
-  wang2025openhands,
-  title={OpenHands: An Open Platform for {AI} Software Developers as Generalist Agents},
-  author={Xingyao Wang and Boxuan Li and Yufan Song and Frank F. Xu and Xiangru Tang and Mingchen Zhuge and Jiayi Pan and Yueqi Song and Bowen Li and Jaskirat Singh and Hoang H. Tran and Fuqiang Li and Ren Ma and Mingzhang Zheng and Bill Qian and Yanjun Shao and Niklas Muennighoff and Yizhe Zhang and Binyuan Hui and Junyang Lin and Robert Brennan and Hao Peng and Heng Ji and Graham Neubig},
-  booktitle={The Thirteenth International Conference on Learning Representations},
-  year={2025},
-  url={https://openreview.net/forum?id=OJd3ayDDoF}
-}
+
+The `agent-canvas` command starts the full local stack by default. You can also split it when you want to run pieces separately:
+
+```sh
+agent-canvas --frontend-only  # static frontend + ingress only
+agent-canvas --backend-only   # agent server + automation backend + ingress only
 ```
+
+### Option 2: With a Docker Sandbox
+
+**Prerequisites**:
+
+- Docker: Docker Desktop on macOS/Windows, or Docker Engine/Docker Desktop on Linux.
+- A host directory for `PROJECTS_PATH` containing the project folders you want the agent to access. Create it before starting the container.
+
+**macOS / Linux:**
+
+```sh
+export PROJECTS_PATH="$HOME/projects"  # directory containing your project folders
+mkdir -p "$PROJECTS_PATH" "$HOME/.openhands"
+
+docker run -it --rm \
+  -p 8000:8000 \
+  -v "$HOME/.openhands:/home/openhands/.openhands" \
+  -v "${PROJECTS_PATH}:/projects" \
+  ghcr.io/openhands/agent-canvas:1.0.0-rc.11
+```
+
+**Windows (PowerShell / Windows Terminal):** See [README.windows.md](https://github.com/OpenHands/agent-canvas/blob/main/README.windows.md) for the equivalent commands.
+
+The agent will be able to access any project under `PROJECTS_PATH`.
+
+### Option 3: From Source
+
+> [!WARNING]
+> This runs the agent-server directly on the machine you're installing on — the agent will have full access to your filesystem!
+
+**Prerequisites**: Node.js 22.12.x or later, `npm`, `uv` (for running the agent server via `uvx`)
+
+```sh
+git clone https://github.com/OpenHands/agent-canvas.git
+cd agent-canvas
+npm install
+npm run dev
+```
+
+---
+
+Access the UI at [http://localhost:8000](http://localhost:8000). You can add additional backends directly from the UI.
+
+# Architecture
+
+Agent Canvas is powered by the [OpenHands Agent Server](https://github.com/OpenHands/software-agent-sdk/tree/main/openhands-agent-server/openhands/agent_server), a REST API for running multiple agents on a single machine. Each Agent Server runs on a single host/port; the Agent Canvas can connect to multiple Agent Servers and easily flip between them.
+
+You can run an Agent Server anywhere:
+
+- Directly on your laptop (be careful!)
+- On a dedicated machine like a Mac Mini
+- On a virtual machine in the cloud
+- Inside OpenHands Cloud (our commercial offering)
+
+The Agent Server is often paired with an [Automation Server](https://github.com/OpenHands/automation), which lets you set up agents that run on a schedule or in response to events.
+
+<img width="1456" height="1258" alt="image" src="https://github.com/user-attachments/assets/cb6de6f5-ac30-4d04-a76a-b5c259f0c163" />
+
+## More documentation
+
+- [Documentation index](https://docs.openhands.dev/overview/introduction)
+- [Architecture overview](#architecture)
+- [Development guide](./Development.md)
+- [Self-hosting guide](https://docs.openhands.dev/openhands/usage/agent-canvas/backend-setup/vm)

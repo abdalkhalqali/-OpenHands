@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { isMobileDevice } from "#/utils/utils";
+import { isMobileUserAgent } from "#/utils/utils";
 import {
   ensureCursorVisible,
   clearEmptyContent,
@@ -68,14 +68,23 @@ export const useChatInputEvents = (
         return;
       }
 
+      // Ignore Enter key during IME composition (e.g., Chinese, Japanese, Korean input)
+      // When using IME, Enter is used to confirm the composition, not to submit
+      if (e.nativeEvent.isComposing) {
+        return;
+      }
+
       if (checkIsContentEmpty()) {
         e.preventDefault();
         increaseHeightForEmptyContent();
         return;
       }
 
-      // Original submit logic - only for desktop without shift key
-      if (!isMobileDevice() && !e.shiftKey && !disabled) {
+      // Submit on Enter for everything except phones/tablets (where Enter
+      // inserts a newline and the user taps the send button). We gate on the
+      // user agent rather than touch capability so a desktop OS with a
+      // touchscreen (e.g. a Windows 2-in-1) still submits on Enter.
+      if (!isMobileUserAgent() && !e.shiftKey && !disabled) {
         e.preventDefault();
         handleSubmit();
       }

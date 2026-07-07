@@ -10,6 +10,8 @@ from typing import AsyncGenerator
 from uuid import uuid4
 
 import pytest
+from pydantic import ValidationError
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
@@ -17,12 +19,16 @@ from openhands.app_server.event_callback.event_callback_models import (
     CreateEventCallbackRequest,
     EventCallback,
     EventCallbackProcessor,
+    EventCallbackStatus,
     LoggingCallbackProcessor,
 )
 from openhands.app_server.event_callback.sql_event_callback_service import (
     SQLEventCallbackService,
+    StoredEventCallback,
+    StoredEventCallbackResult,
 )
 from openhands.app_server.utils.sql_utils import Base
+from openhands.sdk import Message, MessageEvent, TextContent
 
 
 @pytest.fixture
@@ -267,31 +273,38 @@ class TestSQLEventCallbackService:
         assert len(next_result.items) == 2
         assert next_result.next_page_id is None
 
-    async def test_search_callbacks_with_null_filters(
-        self,
-        service: SQLEventCallbackService,
-        sample_processor: EventCallbackProcessor,
+    def test_event_callback_request_requires_conversation_id(
+        self, sample_processor: EventCallbackProcessor
     ):
-        """Test searching callbacks with null conversation_id and event_kind."""
-        # Create callbacks with null values
-        callback1_request = CreateEventCallbackRequest(
-            conversation_id=None,
-            processor=sample_processor,
-            event_kind=None,
-        )
-        callback2_request = CreateEventCallbackRequest(
+        """Callbacks must be scoped to a concrete conversation."""
+        with pytest.raises(ValidationError):
+            CreateEventCallbackRequest(
+                conversation_id=None,
+                processor=sample_processor,
+                event_kind='MessageEvent',
+            )
+
+    def test_event_callback_request_rejects_null_event_kind(
+        self, sample_processor: EventCallbackProcessor
+    ):
+        """Callbacks must be scoped to a concrete event kind."""
+        with pytest.raises(ValidationError):
+            CreateEventCallbackRequest(
+                conversation_id=uuid4(),
+                processor=sample_processor,
+                event_kind=None,
+            )
+
+    def test_event_callback_request_defaults_event_kind_to_message_event(
+        self, sample_processor: EventCallbackProcessor
+    ):
+        """MessageEvent is the default callback event kind."""
+        callback_request = CreateEventCallbackRequest(
             conversation_id=uuid4(),
             processor=sample_processor,
-            event_kind='ActionEvent',
         )
 
-        await service.create_event_callback(callback1_request)
-        await service.create_event_callback(callback2_request)
-
-        # Search should return both callbacks
-        result = await service.search_event_callbacks()
-
-        assert len(result.items) == 2
+        assert callback_request.event_kind == 'MessageEvent'
 
     async def test_callback_timestamps(
         self,
@@ -372,3 +385,357 @@ class TestSQLEventCallbackService:
         assert len(result.items) == 2
         assert result.items[0].id == callback2.id
         assert result.items[1].id == callback1.id
+
+    async def test_execute_callbacks_runs_conversation_specific_callback(
+        self,
+        service: SQLEventCallbackService,
+        sample_processor: EventCallbackProcessor,
+    ):
+        """Test executing callbacks for the matching conversation."""
+        conversation_id = uuid4()
+        callback = await service.create_event_callback(
+            CreateEventCallbackRequest(
+                conversation_id=conversation_id,
+                processor=sample_processor,
+                event_kind='MessageEvent',
+            )
+        )
+        event = MessageEvent(
+            source='user',
+            llm_message=Message(role='user', content=[TextContent(text='hi')]),
+        )
+
+        await service.execute_callbacks(conversation_id, event)
+
+        result = await service.db_session.execute(select(StoredEventCallbackResult))
+        callback_results = result.scalars().all()
+        assert len(callback_results) == 1
+        assert callback_results[0].event_callback_id == callback.id
+        assert callback_results[0].conversation_id == conversation_id
+
+    async def test_execute_callbacks_ignores_legacy_null_conversation_callback(
+        self,
+        service: SQLEventCallbackService,
+        sample_processor: EventCallbackProcessor,
+    ):
+        """Legacy callbacks without a conversation_id should not execute globally."""
+        conversation_id = uuid4()
+        service.db_session.add(
+            StoredEventCallback(
+                id=uuid4(),
+                conversation_id=None,
+                status=EventCallbackStatus.ACTIVE,
+                processor=sample_processor,
+                event_kind='MessageEvent',
+            )
+        )
+        await service.db_session.commit()
+        event = MessageEvent(
+            source='user',
+            llm_message=Message(role='user', content=[TextContent(text='hi')]),
+        )
+
+        await service.execute_callbacks(conversation_id, event)
+
+        result = await service.db_session.execute(select(StoredEventCallbackResult))
+        callback_results = result.scalars().all()
+        assert callback_results == []
+
+    async def test_execute_callbacks_ignores_legacy_null_event_kind_callback(
+        self,
+        service: SQLEventCallbackService,
+        sample_processor: EventCallbackProcessor,
+    ):
+        """Legacy callbacks without an event_kind should not execute as event wildcards."""
+        conversation_id = uuid4()
+        service.db_session.add(
+            StoredEventCallback(
+                id=uuid4(),
+                conversation_id=conversation_id,
+                status=EventCallbackStatus.ACTIVE,
+                processor=sample_processor,
+                event_kind=None,
+            )
+        )
+        await service.db_session.commit()
+        event = MessageEvent(
+            source='user',
+            llm_message=Message(role='user', content=[TextContent(text='hi')]),
+        )
+
+        await service.execute_callbacks(conversation_id, event)
+
+        result = await service.db_session.execute(select(StoredEventCallbackResult))
+        callback_results = result.scalars().all()
+        assert callback_results == []
+
+    async def test_save_event_callback_new(
+        self,
+        service: SQLEventCallbackService,
+        sample_callback: EventCallback,
+    ):
+        """Test saving a new event callback (insert scenario)."""
+        # Save the callback
+        original_updated_at = sample_callback.updated_at
+        saved_callback = await service.save_event_callback(sample_callback)
+
+        # Verify the returned callback
+        assert saved_callback.id == sample_callback.id
+        assert saved_callback.conversation_id == sample_callback.conversation_id
+        assert saved_callback.processor == sample_callback.processor
+        assert saved_callback.event_kind == sample_callback.event_kind
+        assert saved_callback.status == sample_callback.status
+
+        # Verify updated_at was changed (handle timezone differences)
+        # Convert both to UTC for comparison if needed
+        original_utc = (
+            original_updated_at.replace(tzinfo=timezone.utc)
+            if original_updated_at.tzinfo is None
+            else original_updated_at
+        )
+        saved_utc = (
+            saved_callback.updated_at.replace(tzinfo=timezone.utc)
+            if saved_callback.updated_at.tzinfo is None
+            else saved_callback.updated_at
+        )
+        assert saved_utc >= original_utc
+
+        # Commit the transaction to persist changes
+        await service.db_session.commit()
+
+        # Verify the callback can be retrieved
+        retrieved_callback = await service.get_event_callback(sample_callback.id)
+        assert retrieved_callback is not None
+        assert retrieved_callback.id == sample_callback.id
+        assert retrieved_callback.conversation_id == sample_callback.conversation_id
+        assert retrieved_callback.event_kind == sample_callback.event_kind
+
+    async def test_save_event_callback_update_existing(
+        self,
+        service: SQLEventCallbackService,
+        sample_request: CreateEventCallbackRequest,
+    ):
+        """Test saving an existing event callback (update scenario)."""
+        # First create a callback through the service
+        created_callback = await service.create_event_callback(sample_request)
+        original_updated_at = created_callback.updated_at
+
+        # Modify the callback
+        created_callback.event_kind = 'ObservationEvent'
+        from openhands.app_server.event_callback.event_callback_models import (
+            EventCallbackStatus,
+        )
+
+        created_callback.status = EventCallbackStatus.DISABLED
+
+        # Save the modified callback
+        saved_callback = await service.save_event_callback(created_callback)
+
+        # Verify the returned callback has the modifications
+        assert saved_callback.id == created_callback.id
+        assert saved_callback.event_kind == 'ObservationEvent'
+        assert saved_callback.status == EventCallbackStatus.DISABLED
+
+        # Verify updated_at was changed (handle timezone differences)
+        original_utc = (
+            original_updated_at.replace(tzinfo=timezone.utc)
+            if original_updated_at.tzinfo is None
+            else original_updated_at
+        )
+        saved_utc = (
+            saved_callback.updated_at.replace(tzinfo=timezone.utc)
+            if saved_callback.updated_at.tzinfo is None
+            else saved_callback.updated_at
+        )
+        assert saved_utc >= original_utc
+
+        # Commit the transaction to persist changes
+        await service.db_session.commit()
+
+        # Verify the changes were persisted
+        retrieved_callback = await service.get_event_callback(created_callback.id)
+        assert retrieved_callback is not None
+        assert retrieved_callback.event_kind == 'ObservationEvent'
+        assert retrieved_callback.status == EventCallbackStatus.DISABLED
+
+    async def test_save_event_callback_timestamp_update(
+        self,
+        service: SQLEventCallbackService,
+        sample_callback: EventCallback,
+    ):
+        """Test that save_event_callback properly updates the timestamp."""
+        # Record the original timestamp
+        original_updated_at = sample_callback.updated_at
+
+        # Wait a small amount to ensure timestamp difference
+        import asyncio
+
+        await asyncio.sleep(0.01)
+
+        # Save the callback
+        saved_callback = await service.save_event_callback(sample_callback)
+
+        # Verify updated_at was changed and is more recent (handle timezone differences)
+        original_utc = (
+            original_updated_at.replace(tzinfo=timezone.utc)
+            if original_updated_at.tzinfo is None
+            else original_updated_at
+        )
+        saved_utc = (
+            saved_callback.updated_at.replace(tzinfo=timezone.utc)
+            if saved_callback.updated_at.tzinfo is None
+            else saved_callback.updated_at
+        )
+        assert saved_utc >= original_utc
+        assert isinstance(saved_callback.updated_at, datetime)
+
+        # Verify the timestamp is recent (within last minute)
+        now = datetime.now(timezone.utc)
+        time_diff = now - saved_utc
+        assert time_diff.total_seconds() < 60
+
+    def test_event_callback_rejects_null_values(
+        self,
+        sample_processor: EventCallbackProcessor,
+    ):
+        """EventCallback should not allow null conversation_id or event_kind."""
+        with pytest.raises(ValidationError):
+            EventCallback(
+                conversation_id=None,
+                processor=sample_processor,
+                event_kind='MessageEvent',
+            )
+
+        with pytest.raises(ValidationError):
+            EventCallback(
+                conversation_id=uuid4(),
+                processor=sample_processor,
+                event_kind=None,
+            )
+
+    async def test_save_event_callback_preserves_created_at(
+        self,
+        service: SQLEventCallbackService,
+        sample_request: CreateEventCallbackRequest,
+    ):
+        """Test that save_event_callback preserves the original created_at timestamp."""
+        # Create a callback through the service
+        created_callback = await service.create_event_callback(sample_request)
+        original_created_at = created_callback.created_at
+
+        # Wait a small amount to ensure timestamp difference
+        import asyncio
+
+        await asyncio.sleep(0.01)
+
+        # Save the callback again
+        saved_callback = await service.save_event_callback(created_callback)
+
+        # Verify created_at was preserved but updated_at was changed
+        assert saved_callback.created_at == original_created_at
+        # Handle timezone differences for comparison
+        created_utc = (
+            original_created_at.replace(tzinfo=timezone.utc)
+            if original_created_at.tzinfo is None
+            else original_created_at
+        )
+        updated_utc = (
+            saved_callback.updated_at.replace(tzinfo=timezone.utc)
+            if saved_callback.updated_at.tzinfo is None
+            else saved_callback.updated_at
+        )
+        assert updated_utc >= created_utc
+
+    async def test_save_event_callback_different_statuses(
+        self,
+        service: SQLEventCallbackService,
+        sample_processor: EventCallbackProcessor,
+    ):
+        """Test saving callbacks with different status values."""
+        from openhands.app_server.event_callback.event_callback_models import (
+            EventCallbackStatus,
+        )
+
+        # Test each status
+        statuses = [
+            EventCallbackStatus.ACTIVE,
+            EventCallbackStatus.DISABLED,
+            EventCallbackStatus.COMPLETED,
+            EventCallbackStatus.ERROR,
+        ]
+
+        for status in statuses:
+            callback = EventCallback(
+                conversation_id=uuid4(),
+                processor=sample_processor,
+                event_kind='ActionEvent',
+                status=status,
+            )
+
+            # Save the callback
+            saved_callback = await service.save_event_callback(callback)
+
+            # Verify the status was preserved
+            assert saved_callback.status == status
+
+            # Commit and verify persistence
+            await service.db_session.commit()
+            retrieved_callback = await service.get_event_callback(callback.id)
+            assert retrieved_callback is not None
+            assert retrieved_callback.status == status
+
+    async def test_save_event_callback_returns_same_object(
+        self,
+        service: SQLEventCallbackService,
+        sample_callback: EventCallback,
+    ):
+        """Test that save_event_callback returns the same object instance."""
+        # Save the callback
+        saved_callback = await service.save_event_callback(sample_callback)
+
+        # Verify it's the same object (identity check)
+        assert saved_callback is sample_callback
+
+        # But verify the updated_at was modified on the original object
+        assert sample_callback.updated_at == saved_callback.updated_at
+
+    async def test_save_event_callback_multiple_saves(
+        self,
+        service: SQLEventCallbackService,
+        sample_callback: EventCallback,
+    ):
+        """Test saving the same callback multiple times."""
+        # Save the callback multiple times
+        first_save = await service.save_event_callback(sample_callback)
+        first_updated_at = first_save.updated_at
+
+        # Wait a small amount to ensure timestamp difference
+        import asyncio
+
+        await asyncio.sleep(0.01)
+
+        second_save = await service.save_event_callback(sample_callback)
+        second_updated_at = second_save.updated_at
+
+        # Verify timestamps are different (handle timezone differences)
+        first_utc = (
+            first_updated_at.replace(tzinfo=timezone.utc)
+            if first_updated_at.tzinfo is None
+            else first_updated_at
+        )
+        second_utc = (
+            second_updated_at.replace(tzinfo=timezone.utc)
+            if second_updated_at.tzinfo is None
+            else second_updated_at
+        )
+        assert second_utc >= first_utc
+
+        # Verify it's still the same callback
+        assert first_save.id == second_save.id
+        assert first_save is second_save  # Same object instance
+
+        # Commit and verify only one record exists
+        await service.db_session.commit()
+        retrieved_callback = await service.get_event_callback(sample_callback.id)
+        assert retrieved_callback is not None
+        assert retrieved_callback.id == sample_callback.id

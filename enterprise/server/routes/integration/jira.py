@@ -1,35 +1,40 @@
+import hashlib
+import hmac
 import json
 import os
 import re
 import uuid
-from urllib.parse import urlparse
+from typing import cast
+from urllib.parse import urlencode, urlparse
 
-import requests
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, status
+import httpx
+from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request, status
 from fastapi.responses import JSONResponse, RedirectResponse
 from integrations.jira.jira_manager import JiraManager
 from integrations.models import Message, SourceType
+from integrations.utils import HOST_URL
 from pydantic import BaseModel, Field, field_validator
 from server.auth.constants import JIRA_CLIENT_ID, JIRA_CLIENT_SECRET
 from server.auth.saas_user_auth import SaasUserAuth
 from server.auth.token_manager import TokenManager
-from server.constants import WEB_HOST
-from storage.redis import create_redis_client
+from storage.jira_workspace import JiraWorkspace
+from storage.redis import get_redis_client
 
-from openhands.core.logger import openhands_logger as logger
-from openhands.server.user_auth.user_auth import get_user_auth
+from openhands.app_server.user_auth.user_auth import get_user_auth
+from openhands.app_server.utils.logger import openhands_logger as logger
 
 # Environment variable to disable Jira webhooks
 JIRA_WEBHOOKS_ENABLED = os.environ.get('JIRA_WEBHOOKS_ENABLED', '0') in (
     '1',
     'true',
 )
-JIRA_REDIRECT_URI = f'https://{WEB_HOST}/integration/jira/callback'
+JIRA_REDIRECT_URI = f'{HOST_URL}/integration/jira/callback'
 JIRA_SCOPES = 'read:me read:jira-user read:jira-work'
 JIRA_AUTH_URL = 'https://auth.atlassian.com/authorize'
 JIRA_TOKEN_URL = 'https://auth.atlassian.com/oauth/token'
 JIRA_RESOURCES_URL = 'https://api.atlassian.com/oauth/token/accessible-resources'
 JIRA_USER_INFO_URL = 'https://api.atlassian.com/me'
+JIRA_TIMEOUT = httpx.Timeout(30.0)
 
 
 # Request/Response models
@@ -119,7 +124,69 @@ class JiraValidateWorkspaceResponse(BaseModel):
 jira_integration_router = APIRouter(prefix='/integration/jira')
 token_manager = TokenManager()
 jira_manager = JiraManager(token_manager)
-redis_client = create_redis_client()
+redis_client = get_redis_client()
+
+
+async def verify_jira_signature(body: bytes, signature: str, payload: dict):
+    """
+    Verify Jira webhook signature.
+
+    Args:
+        body: Raw request body bytes
+        signature: Signature from x-hub-signature header (format: "sha256=<hash>")
+        payload: Parsed JSON payload from webhook
+
+    Raises:
+        HTTPException: 403 if signature verification fails or workspace is invalid
+
+    Returns:
+        None (raises exception on failure)
+    """
+
+    if not signature:
+        raise HTTPException(
+            status_code=403, detail='x-hub-signature header is missing!'
+        )
+
+    workspace_name = jira_manager.get_workspace_name_from_payload(payload)
+    if workspace_name is None:
+        logger.warning(
+            '[Jira] No workspace name found in webhook payload',
+            extra={
+                'payload': payload,
+            },
+        )
+        raise HTTPException(
+            status_code=403, detail='Workspace name not found in payload'
+        )
+
+    workspace: (
+        JiraWorkspace | None
+    ) = await jira_manager.integration_store.get_workspace_by_name(workspace_name)
+
+    if workspace is None:
+        logger.warning(f'[Jira] Could not identify workspace {workspace_name}')
+        raise HTTPException(status_code=403, detail='Unidentified workspace')
+
+    if workspace.status != 'active':
+        logger.warning(
+            '[Jira] Workspace is inactive',
+            extra={
+                'jira_workspace_id': workspace.id,
+                'parsed_workspace_name': workspace.name,
+                'status': workspace.status,
+            },
+        )
+
+        raise HTTPException(status_code=403, detail='Workspace is inactive')
+
+    webhook_secret = token_manager.decrypt_text(workspace.webhook_secret)
+    expected_signature = hmac.new(
+        webhook_secret.encode(), body, hashlib.sha256
+    ).hexdigest()
+
+    if not hmac.compare_digest(expected_signature, signature):
+        raise HTTPException(status_code=403, detail="Request signatures didn't match!")
 
 
 async def _handle_workspace_link_creation(
@@ -216,6 +283,7 @@ async def _validate_workspace_update_permissions(user_id: str, target_workspace:
 async def jira_events(
     request: Request,
     background_tasks: BackgroundTasks,
+    x_hub_signature: str = Header(None),
 ):
     """Handle Jira webhook events."""
     # Check if Jira webhooks are enabled
@@ -227,13 +295,15 @@ async def jira_events(
         )
 
     try:
-        signature_valid, signature, payload = await jira_manager.validate_request(
-            request
-        )
+        parts = x_hub_signature.split('=', 1)
+        if not (len(parts) == 2 and parts[1]):
+            raise HTTPException(status_code=403, detail='Malformed x-hub-signature!')
 
-        if not signature_valid:
-            logger.warning('[Jira] Invalid webhook signature')
-            raise HTTPException(status_code=403, detail='Invalid webhook signature!')
+        signature = parts[1]
+        body = await request.body()
+        payload = await request.json()
+
+        await verify_jira_signature(body, signature, payload)
 
         # Check for duplicate requests using Redis
         key = f'jira:{signature}'
@@ -245,10 +315,11 @@ async def jira_events(
             logger.info(f'Processing new Jira webhook event: {signature}')
             redis_client.setex(key, 300, '1')
 
-        # Process the webhook
+        # Process the webhook in background after returning response.
+        # Note: For async functions, BackgroundTasks runs them in the same event loop
+        # (not a thread pool), so asyncpg connections work correctly.
         message_payload = {'payload': payload}
         message = Message(source=SourceType.JIRA, message=message_payload)
-
         background_tasks.add_task(jira_manager.receive_message, message)
 
         return JSONResponse({'success': True})
@@ -268,7 +339,7 @@ async def jira_events(
 async def create_jira_workspace(request: Request, workspace_data: JiraWorkspaceCreate):
     """Create a new Jira workspace registration."""
     try:
-        user_auth: SaasUserAuth = await get_user_auth(request)
+        user_auth = cast(SaasUserAuth, await get_user_auth(request))
         user_id = await user_auth.get_user_id()
         user_email = await user_auth.get_user_email()
 
@@ -308,9 +379,7 @@ async def create_jira_workspace(request: Request, workspace_data: JiraWorkspaceC
             'prompt': 'consent',
         }
 
-        auth_url = (
-            f"{JIRA_AUTH_URL}?{'&'.join([f'{k}={v}' for k, v in auth_params.items()])}"
-        )
+        auth_url = f'{JIRA_AUTH_URL}?{urlencode(auth_params)}'
 
         return JSONResponse(
             content={
@@ -334,7 +403,7 @@ async def create_jira_workspace(request: Request, workspace_data: JiraWorkspaceC
 async def create_workspace_link(request: Request, link_data: JiraLinkCreate):
     """Register a user mapping to a Jira workspace."""
     try:
-        user_auth: SaasUserAuth = await get_user_auth(request)
+        user_auth = cast(SaasUserAuth, await get_user_auth(request))
         user_id = await user_auth.get_user_id()
         user_email = await user_auth.get_user_email()
 
@@ -369,9 +438,7 @@ async def create_workspace_link(request: Request, link_data: JiraLinkCreate):
             'response_type': 'code',
             'prompt': 'consent',
         }
-        auth_url = (
-            f"{JIRA_AUTH_URL}?{'&'.join([f'{k}={v}' for k, v in auth_params.items()])}"
-        )
+        auth_url = f'{JIRA_AUTH_URL}?{urlencode(auth_params)}'
 
         return JSONResponse(
             content={
@@ -414,7 +481,8 @@ async def jira_callback(request: Request, code: str, state: str):
         'code': code,
         'redirect_uri': JIRA_REDIRECT_URI,
     }
-    response = requests.post(JIRA_TOKEN_URL, json=token_payload)
+    async with httpx.AsyncClient(timeout=JIRA_TIMEOUT) as client:
+        response = await client.post(JIRA_TOKEN_URL, json=token_payload)
     if response.status_code != 200:
         raise HTTPException(
             status_code=400, detail=f'Error fetching token: {response.text}'
@@ -424,7 +492,8 @@ async def jira_callback(request: Request, code: str, state: str):
     access_token = token_data['access_token']
 
     headers = {'Authorization': f'Bearer {access_token}'}
-    response = requests.get(JIRA_RESOURCES_URL, headers=headers)
+    async with httpx.AsyncClient(timeout=JIRA_TIMEOUT) as client:
+        response = await client.get(JIRA_RESOURCES_URL, headers=headers)
 
     if response.status_code != 200:
         raise HTTPException(
@@ -454,7 +523,8 @@ async def jira_callback(request: Request, code: str, state: str):
 
     jira_cloud_id = target_workspace_data.get('id', '')
 
-    jira_user_response = requests.get(JIRA_USER_INFO_URL, headers=headers)
+    async with httpx.AsyncClient(timeout=JIRA_TIMEOUT) as client:
+        jira_user_response = await client.get(JIRA_USER_INFO_URL, headers=headers)
     if jira_user_response.status_code != 200:
         raise HTTPException(
             status_code=400,
@@ -537,8 +607,14 @@ async def jira_callback(request: Request, code: str, state: str):
 async def get_current_workspace_link(request: Request):
     """Get current user's Jira integration details."""
     try:
-        user_auth: SaasUserAuth = await get_user_auth(request)
+        user_auth = cast(SaasUserAuth, await get_user_auth(request))
         user_id = await user_auth.get_user_id()
+
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail='User ID not found',
+            )
 
         user = await jira_manager.integration_store.get_user_by_active_workspace(
             user_id
@@ -590,8 +666,14 @@ async def get_current_workspace_link(request: Request):
 async def unlink_workspace(request: Request):
     """Unlink user from Jira integration by setting status to inactive."""
     try:
-        user_auth: SaasUserAuth = await get_user_auth(request)
+        user_auth = cast(SaasUserAuth, await get_user_auth(request))
         user_id = await user_auth.get_user_id()
+
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail='User ID not found',
+            )
 
         user = await jira_manager.integration_store.get_user_by_active_workspace(
             user_id
@@ -646,7 +728,7 @@ async def validate_workspace_integration(request: Request, workspace_name: str):
                 detail='workspace_name can only contain alphanumeric characters, hyphens, underscores, and periods',
             )
 
-        user_auth: SaasUserAuth = await get_user_auth(request)
+        user_auth = cast(SaasUserAuth, await get_user_auth(request))
         user_email = await user_auth.get_user_email()
         if not user_email:
             raise HTTPException(

@@ -1,4 +1,3 @@
-import posthog from "posthog-js";
 import { handleStatusMessage } from "#/services/actions";
 import { displayErrorToast } from "./custom-toast-handlers";
 
@@ -9,13 +8,10 @@ interface ErrorDetails {
   msgId?: string;
 }
 
-export function trackError({ message, source, metadata = {} }: ErrorDetails) {
-  const error = new Error(message);
-  posthog.captureException(error, {
-    error_source: source || "unknown",
-    ...metadata,
-  });
-}
+// PostHog capture removed — error tracking is now handled server-side
+export function trackError(
+  details: ErrorDetails, // eslint-disable-line @typescript-eslint/no-unused-vars
+): void {}
 
 export function showErrorToast({
   message,
@@ -39,4 +35,21 @@ export function showChatError({
     id: msgId,
     status_update: true,
   });
+}
+
+/**
+ * Checks if an error message indicates an OpenHands budget or credit limit issue.
+ * Provider-side errors can also mention "credits"; those should stay as raw
+ * provider errors instead of being rewritten as OpenHands billing failures.
+ */
+export function isBudgetOrCreditError(errorMessage: string): boolean {
+  const lowerCaseError = errorMessage.toLowerCase();
+  const isBudgetLimitError =
+    lowerCaseError.includes("budget") &&
+    /(exceed|exceeded|limit|max budget|spent)/.test(lowerCaseError);
+  const isOpenHandsCreditError =
+    /openhands\s+credits?/.test(lowerCaseError) ||
+    lowerCaseError.includes("credit limit reached");
+
+  return isBudgetLimitError || isOpenHandsCreditError;
 }

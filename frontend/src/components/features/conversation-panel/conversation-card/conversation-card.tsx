@@ -1,13 +1,15 @@
 import React from "react";
-import posthog from "posthog-js";
 import { cn } from "#/utils/utils";
 import { transformVSCodeUrl } from "#/utils/vscode-url-helper";
 import ConversationService from "#/api/conversation-service/conversation-service.api";
-import { ConversationStatus } from "#/types/conversation-status";
+import { V1SandboxStatus } from "#/api/sandbox-service/sandbox-service.types";
 import { RepositorySelection } from "#/api/open-hands.types";
 import { ConversationCardHeader } from "./conversation-card-header";
 import { ConversationCardActions } from "./conversation-card-actions";
 import { ConversationCardFooter } from "./conversation-card-footer";
+import { SandboxStatusBadges } from "./sandbox-status-badges";
+import { useDownloadConversation } from "#/hooks/use-download-conversation";
+import type { AgentChip } from "#/utils/agent-display-label";
 
 interface ConversationCardProps {
   onClick?: () => void;
@@ -19,11 +21,11 @@ interface ConversationCardProps {
   selectedRepository: RepositorySelection | null;
   lastUpdatedAt: string; // ISO 8601
   createdAt?: string; // ISO 8601
-  conversationStatus?: ConversationStatus;
+  sandboxStatus?: V1SandboxStatus;
   conversationId?: string; // Optional conversation ID for VS Code URL
-  conversationVersion?: "V0" | "V1";
   contextMenuOpen?: boolean;
   onContextMenuToggle?: (isOpen: boolean) => void;
+  agentChip?: AgentChip | null;
 }
 
 export function ConversationCard({
@@ -39,12 +41,13 @@ export function ConversationCard({
   lastUpdatedAt,
   createdAt,
   conversationId,
-  conversationStatus,
-  conversationVersion,
+  sandboxStatus,
   contextMenuOpen = false,
   onContextMenuToggle,
+  agentChip,
 }: ConversationCardProps) {
   const [titleMode, setTitleMode] = React.useState<"view" | "edit">("view");
+  const { mutateAsync: downloadConversation } = useDownloadConversation();
 
   const onTitleSave = (newTitle: string) => {
     if (newTitle !== "" && newTitle !== title) {
@@ -79,7 +82,6 @@ export function ConversationCard({
   ) => {
     event.preventDefault();
     event.stopPropagation();
-    posthog.capture("download_via_vscode_button_clicked");
 
     // Fetch the VS Code URL from the API
     if (conversationId) {
@@ -100,6 +102,18 @@ export function ConversationCard({
     onContextMenuToggle?.(false);
   };
 
+  const handleDownloadConversation = async (
+    event: React.MouseEvent<HTMLButtonElement>,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (conversationId) {
+      await downloadConversation(conversationId);
+    }
+    onContextMenuToggle?.(false);
+  };
+
   const hasContextMenu = !!(onDelete || onChangeTitle || showOptions);
 
   return (
@@ -113,13 +127,15 @@ export function ConversationCard({
       )}
     >
       <div className="flex items-center justify-between w-full">
-        <ConversationCardHeader
-          title={title}
-          titleMode={titleMode}
-          onTitleSave={onTitleSave}
-          conversationStatus={conversationStatus}
-          conversationVersion={conversationVersion}
-        />
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <ConversationCardHeader
+            title={title}
+            titleMode={titleMode}
+            onTitleSave={onTitleSave}
+            sandboxStatus={sandboxStatus}
+          />
+          <SandboxStatusBadges sandboxStatus={sandboxStatus} />
+        </div>
 
         {hasContextMenu && (
           <ConversationCardActions
@@ -129,7 +145,8 @@ export function ConversationCard({
             onStop={onStop && handleStop}
             onEdit={onChangeTitle && handleEdit}
             onDownloadViaVSCode={handleDownloadViaVSCode}
-            conversationStatus={conversationStatus}
+            onDownloadConversation={handleDownloadConversation}
+            sandboxStatus={sandboxStatus}
             conversationId={conversationId}
             showOptions={showOptions}
           />
@@ -140,7 +157,8 @@ export function ConversationCard({
         selectedRepository={selectedRepository}
         lastUpdatedAt={lastUpdatedAt}
         createdAt={createdAt}
-        conversationStatus={conversationStatus}
+        sandboxStatus={sandboxStatus}
+        agentChip={agentChip}
       />
     </div>
   );

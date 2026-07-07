@@ -1,19 +1,65 @@
-from sqlalchemy import Column, DateTime, Integer, String, text
+from datetime import datetime
+from typing import TYPE_CHECKING
+from uuid import UUID
+
+from sqlalchemy import DateTime, ForeignKey, String, text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from storage.base import Base
+
+if TYPE_CHECKING:
+    from storage.org import Org
 
 
 class ApiKey(Base):
-    """
-    Represents an API key for a user.
-    """
+    """Represents an API key for a user."""
 
     __tablename__ = 'api_keys'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    key = Column(String(255), nullable=False, unique=True, index=True)
-    user_id = Column(String(255), nullable=False, index=True)
-    name = Column(String(255), nullable=True)
-    created_at = Column(
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    key: Mapped[str] = mapped_column(
+        String(255), nullable=False, unique=True, index=True
+    )
+    user_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    org_id: Mapped[UUID | None] = mapped_column(ForeignKey('org.id'), nullable=True)
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=text('CURRENT_TIMESTAMP'), nullable=False
     )
-    last_used_at = Column(DateTime, nullable=True)
-    expires_at = Column(DateTime, nullable=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # Relationships
+    org: Mapped['Org | None'] = relationship('Org', back_populates='api_keys')
+    scopes: Mapped[list['ApiKeyScope']] = relationship(
+        'ApiKeyScope',
+        back_populates='api_key',
+        cascade='all, delete-orphan',
+        # Rely on the DB-level ``ON DELETE CASCADE`` (see migration) rather than
+        # loading children on parent delete, which would trigger blocking lazy
+        # IO under the async session.
+        passive_deletes=True,
+    )
+
+
+class ApiKeyScope(Base):
+    """An opaque, namespaced scope string attached to an API key.
+
+    OpenHands does not interpret scope strings; it stores them, returns them at
+    validation time, and leaves all semantic enforcement to the resource server
+    that owns the namespace (e.g. ``automation:kv:read:org``). A key with no
+    scope rows is treated as carrying the implicit ``full`` scope, preserving
+    backwards compatibility with keys minted before scopes existed.
+    """
+
+    __tablename__ = 'api_key_scopes'
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    api_key_id: Mapped[int] = mapped_column(
+        ForeignKey('api_keys.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True,
+    )
+    scope: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    # Relationships
+    api_key: Mapped['ApiKey'] = relationship('ApiKey', back_populates='scopes')

@@ -2,6 +2,19 @@ import { ConversationStatus } from "#/types/conversation-status";
 import { RuntimeStatus } from "#/types/runtime-status";
 import { Provider } from "#/types/settings";
 
+/** Backend ``AppConversationInfo.agent_kind`` discriminator. */
+export type AgentKind = "openhands" | "acp";
+
+/**
+ * Conversation tags. The backend stamps ``acpserver`` (the ACP provider
+ * discriminator key) at conversation-create time; other keys carry automation
+ * context, skills used, etc., and are open-ended.
+ */
+export interface ConversationTags {
+  acpserver?: string;
+  [key: string]: string | undefined;
+}
+
 export interface ErrorResponse {
   error: string;
 }
@@ -77,6 +90,12 @@ export interface Conversation {
   session_api_key: string | null;
   pr_number?: number[] | null;
   conversation_version?: "V0" | "V1";
+  sub_conversation_ids?: string[];
+  public?: boolean;
+  sandbox_id?: string | null;
+  llm_model?: string | null;
+  agent_kind?: AgentKind;
+  tags?: ConversationTags;
 }
 
 export interface ResultSet<T> {
@@ -84,7 +103,12 @@ export interface ResultSet<T> {
   next_page_id: string | null;
 }
 
+/**
+ * @deprecated Use V1GitChangeStatus for new code. This type is maintained for backward compatibility with V0 API.
+ */
 export type GitChangeStatus = "M" | "A" | "D" | "R" | "U";
+
+export type V1GitChangeStatus = "MOVED" | "ADDED" | "DELETED" | "UPDATED";
 
 export interface GitChange {
   status: GitChangeStatus;
@@ -103,7 +127,7 @@ export interface InputMetadata {
 
 export interface Microagent {
   name: string;
-  type: "repo" | "knowledge";
+  type: "repo" | "knowledge" | "agentskills";
   content: string;
   triggers: string[];
 }
@@ -120,19 +144,6 @@ export interface GetMicroagentPromptResponse {
 export interface IOption<T> {
   label: string;
   value: T;
-}
-
-export interface CreateMicroagent {
-  repo: string;
-  git_provider?: Provider;
-  title?: string;
-}
-
-export interface MicroagentContentResponse {
-  content: string;
-  path: string;
-  git_provider: Provider;
-  triggers: string[];
 }
 
 export type GetFilesResponse = string[];

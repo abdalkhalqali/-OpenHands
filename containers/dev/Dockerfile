@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 ###
-FROM ubuntu:22.04 AS dind
+FROM ubuntu:26.04 AS dind
 
 # https://docs.docker.com/engine/install/ubuntu/
 RUN apt-get update && apt-get install -y \
@@ -103,6 +103,9 @@ RUN apt-get update && apt-get install -y \
 	&& rm -rf /var/lib/apt/lists/* \
 	&& apt-get clean \
 	&& apt-get autoremove -y
+
+# mark /app as safe git directory to avoid pre-commit errors
+RUN git config --system --add safe.directory /app
 
 WORKDIR /app
 

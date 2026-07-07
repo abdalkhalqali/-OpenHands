@@ -16,6 +16,7 @@ import pytest
 from openhands.app_server.sandbox.sandbox_models import (
     SandboxInfo,
     SandboxPage,
+    SandboxRecord,
     SandboxStatus,
 )
 from openhands.app_server.sandbox.sandbox_service import SandboxService
@@ -27,6 +28,8 @@ class MockSandboxService(SandboxService):
     def __init__(self):
         self.search_sandboxes_mock = AsyncMock()
         self.get_sandbox_mock = AsyncMock()
+        self.get_sandbox_by_session_api_key_mock = AsyncMock()
+        self.get_sandbox_record_by_session_api_key_mock = AsyncMock()
         self.start_sandbox_mock = AsyncMock()
         self.resume_sandbox_mock = AsyncMock()
         self.pause_sandbox_mock = AsyncMock()
@@ -40,8 +43,20 @@ class MockSandboxService(SandboxService):
     async def get_sandbox(self, sandbox_id: str) -> SandboxInfo | None:
         return await self.get_sandbox_mock(sandbox_id)
 
-    async def start_sandbox(self, sandbox_spec_id: str | None = None) -> SandboxInfo:
-        return await self.start_sandbox_mock(sandbox_spec_id)
+    async def get_sandbox_by_session_api_key(
+        self, session_api_key: str
+    ) -> SandboxInfo | None:
+        return await self.get_sandbox_by_session_api_key_mock(session_api_key)
+
+    async def get_sandbox_record_by_session_api_key(
+        self, session_api_key: str
+    ) -> SandboxRecord | None:
+        return await self.get_sandbox_record_by_session_api_key_mock(session_api_key)
+
+    async def start_sandbox(
+        self, sandbox_spec_id: str | None = None, sandbox_id: str | None = None
+    ) -> SandboxInfo:
+        return await self.start_sandbox_mock(sandbox_spec_id, sandbox_id)
 
     async def resume_sandbox(self, sandbox_id: str) -> bool:
         return await self.resume_sandbox_mock(sandbox_id)
